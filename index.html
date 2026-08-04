@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Xochi · Generadores</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+
+  <div class="app-header">
+    <div>
+      <h1>Xochi <span>·</span> Generadores</h1>
+      <p>Casetas de peaje — inspección y supervisión de plantas eléctricas</p>
+    </div>
+    <div class="header-right">
+      <span class="sync-indicator" id="syncIndicator">●&nbsp;conectado</span>
+      <button class="settings-btn" id="btnSettings" title="Ajustes">⚙</button>
+    </div>
+  </div>
+
+  <div class="banner" id="globalBanner"></div>
+
+  <div class="tabs" id="tabs">
+    <button class="tab active" data-tab="resumen">Resumen</button>
+    <button class="tab" data-tab="garita1">Garita 1 <span class="dot" id="dot-garita1"></span></button>
+    <button class="tab" data-tab="garita2">Garita 2 <span class="dot" id="dot-garita2"></span></button>
+    <button class="tab" data-tab="garita3">Garita 3 <span class="dot" id="dot-garita3"></span></button>
+    <button class="tab" data-tab="garita4">Garita 4 <span class="dot" id="dot-garita4"></span></button>
+    <button class="tab" data-tab="historial">Historial</button>
+  </div>
+
+  <div class="content">
+    <div class="panel-view" id="view-resumen">
+      <div class="summary-grid" id="summaryGrid"></div>
+      <div class="card" style="margin-top:16px;">
+        <h3>Respaldo de datos</h3>
+        <div class="card-sub">Los datos ya viven en el Google Sheet conectado (descárgalo ahí con Archivo &gt; Descargar en cualquier momento). Aquí también puedes exportar una copia rápida.</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <button class="save-btn" id="btnDownloadJSON">Descargar todo (.json)</button>
+          <button class="save-btn" id="btnDownloadCSV">Descargar historial (.csv)</button>
+        </div>
+      </div>
+    </div>
+    <div id="garitaViews"></div>
+
+    <div class="panel-view hidden" id="view-historial">
+      <div class="card">
+        <h3>Historial general</h3>
+        <div class="card-sub">Todos los registros de las 4 garitas — inspecciones y compras de combustible.</div>
+        <div class="filter-row">
+          <div class="field" style="flex:1;min-width:140px;margin-bottom:0;">
+            <label>Garita</label>
+            <select id="filterGarita">
+              <option value="all">Todas</option>
+              <option value="garita1">Garita 1</option>
+              <option value="garita2">Garita 2</option>
+              <option value="garita3">Garita 3</option>
+              <option value="garita4">Garita 4</option>
+            </select>
+          </div>
+          <div class="field" style="flex:1;min-width:140px;margin-bottom:0;">
+            <label>Tipo de registro</label>
+            <select id="filterTipo">
+              <option value="all">Todos</option>
+              <option value="daily">Inspección diaria</option>
+              <option value="weekly">Inspección semanal</option>
+              <option value="compra">Compra de combustible</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div id="historialTable"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="modal-overlay" id="purchaseModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="purchaseModalTitle">Compra de combustible</h3>
+      <button class="modal-close" id="closePurchase">✕</button>
+    </div>
+    <p class="hint">Registra la recarga de diésel para esta garita.</p>
+    <div class="field">
+      <label>Fecha</label>
+      <input type="date" id="purchaseFecha">
+    </div>
+    <div class="field">
+      <label>Hora</label>
+      <input type="time" id="purchaseHora">
+    </div>
+    <div class="field">
+      <label>Cantidad de combustible (galones)</label>
+      <input type="text" inputmode="decimal" id="purchaseCantidad" placeholder="Ej. 20">
+    </div>
+    <div class="field">
+      <label>Costo total (Q)</label>
+      <input type="text" inputmode="decimal" id="purchaseCosto" placeholder="Ej. 650.00">
+    </div>
+    <div class="field">
+      <label>Responsable</label>
+      <input type="text" id="purchaseResponsable" placeholder="Nombre de quien registra la compra">
+    </div>
+    <button class="save-btn" id="purchaseSave">Guardar compra</button>
+    <span class="error-flash" id="purchaseError"></span>
+  </div>
+</div>
+
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>Ajustes</h3>
+      <button class="modal-close" id="closeSettings">✕</button>
+    </div>
+    <p class="hint">Estos nombres se sugieren automáticamente en cada inspección nueva. Se guardan en el Google Sheet, compartidos por todos los usuarios.</p>
+    <div class="field">
+      <label>Técnico responsable por defecto (diaria)</label>
+      <input type="text" id="defTecnico" placeholder="Ej. J. Pérez">
+    </div>
+    <div class="field">
+      <label>Supervisor por defecto (semanal)</label>
+      <input type="text" id="defSupervisor" placeholder="Ej. M. López">
+    </div>
+    <button class="save-btn" id="saveSettings">Guardar ajustes</button>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
