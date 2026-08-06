@@ -651,9 +651,13 @@ document.getElementById('filterTipo').addEventListener('change', renderHistorial
 
 /* ---------- Descarga de respaldo ---------- */
 function toCSV(rows, headers){
+  // Excel con configuración regional en español espera punto y coma (;)
+  // como separador de columnas al abrir un .csv con doble clic — con
+  // coma, mete todo el contenido en una sola columna.
+  const DELIM = ';';
   const escape = v => `"${String(v===undefined||v===null?'':v).replace(/"/g,'""')}"`;
-  const lines = [headers.map(escape).join(',')];
-  rows.forEach(r => lines.push(headers.map(h=>escape(r[h])).join(',')));
+  const lines = [headers.map(escape).join(DELIM)];
+  rows.forEach(r => lines.push(headers.map(h=>escape(r[h])).join(DELIM)));
   return lines.join('\r\n');
 }
 
@@ -671,37 +675,48 @@ document.getElementById('btnDownloadJSON').addEventListener('click', ()=>{
 });
 
 document.getElementById('btnDownloadCSV').addEventListener('click', ()=>{
-  const rows = [];
+  if(typeof XLSX === 'undefined'){
+    alert('No se pudo cargar la librería de Excel (sin conexión a internet). Intenta de nuevo cuando tengas conexión.');
+    return;
+  }
+
+  const byFechaDesc = (a,b)=> (a.Fecha < b.Fecha ? 1 : a.Fecha > b.Fecha ? -1 : 0);
+
+  const dailyRows = [];
+  const weeklyRows = [];
+  const purchaseRows = [];
   GARITAS.forEach(g=>{
-    db.garitas[g].daily.forEach(r=> rows.push({
-      garita: GARITA_LABEL[g], tipo: 'Inspección diaria', fecha: fmtFecha(r.fecha), hora: '',
-      nivel_pct: r.nivel, tecnico: r.tecnico||'', supervisor: '',
-      test_electrica: '', test_arranque: '', notas: '',
-      cantidad_galones: '', costo: '', responsable_compra: '',
-      alerta: r.alerta ? 'SI' : 'NO'
+    db.garitas[g].daily.forEach(r=> dailyRows.push({
+      Garita: GARITA_LABEL[g], Fecha: fmtFecha(r.fecha), Tecnico: r.tecnico||'',
+      'Nivel (%)': r.nivel, Alerta: r.alerta ? 'SI' : 'NO'
     }));
-    db.garitas[g].weekly.forEach(r=> rows.push({
-      garita: GARITA_LABEL[g], tipo: 'Inspección semanal', fecha: fmtFecha(r.fecha), hora: '',
-      nivel_pct: '', tecnico: '', supervisor: r.supervisor||'',
-      test_electrica: r.test1==='bueno'?'Bueno':'No bueno',
-      test_arranque: r.test2==='bueno'?'Bueno':'No bueno',
-      notas: r.notas||'',
-      cantidad_galones: '', costo: '', responsable_compra: '',
-      alerta: r.alerta ? 'SI' : 'NO'
+    db.garitas[g].weekly.forEach(r=> weeklyRows.push({
+      Garita: GARITA_LABEL[g], Fecha: fmtFecha(r.fecha), Supervisor: r.supervisor||'',
+      'Prueba electrica': r.test1==='bueno' ? 'Bueno' : 'No bueno',
+      'Prueba de arranque': r.test2==='bueno' ? 'Bueno' : 'No bueno',
+      Notas: r.notas||'', Alerta: r.alerta ? 'SI' : 'NO'
     }));
-    (db.garitas[g].compras||[]).forEach(r=> rows.push({
-      garita: GARITA_LABEL[g], tipo: 'Compra de combustible', fecha: fmtFecha(r.fecha), hora: r.hora||'',
-      nivel_pct: '', tecnico: '', supervisor: '',
-      test_electrica: '', test_arranque: '', notas: '',
-      cantidad_galones: r.cantidad, costo: r.costo, responsable_compra: r.responsable||'',
-      alerta: ''
+    (db.garitas[g].compras||[]).forEach(r=> purchaseRows.push({
+      Garita: GARITA_LABEL[g], Fecha: fmtFecha(r.fecha), Hora: r.hora||'',
+      'Cantidad (gal)': r.cantidad, 'Costo (Q)': r.costo, Responsable: r.responsable||''
     }));
   });
-  rows.sort((a,b)=> (a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0));
+  dailyRows.sort(byFechaDesc);
+  weeklyRows.sort(byFechaDesc);
+  purchaseRows.sort(byFechaDesc);
 
-  const headers = ['garita','tipo','fecha','hora','nivel_pct','tecnico','supervisor','test_electrica','test_arranque','notas','cantidad_galones','costo','responsable_compra','alerta'];
-  const csv = '\uFEFF' + toCSV(rows, headers); // BOM para que Excel muestre bien los acentos
-  downloadFile(`xochi-generadores-historial-${todayStr()}.csv`, csv, 'text/csv;charset=utf-8;');
+  const emptyRow = headers => [ headers.reduce((o,h)=>{ o[h]=''; return o; }, {}) ];
+
+  const wb = XLSX.utils.book_new();
+  const wsDaily = XLSX.utils.json_to_sheet(dailyRows.length ? dailyRows : emptyRow(['Garita','Fecha','Tecnico','Nivel (%)','Alerta']));
+  const wsWeekly = XLSX.utils.json_to_sheet(weeklyRows.length ? weeklyRows : emptyRow(['Garita','Fecha','Supervisor','Prueba electrica','Prueba de arranque','Notas','Alerta']));
+  const wsPurchase = XLSX.utils.json_to_sheet(purchaseRows.length ? purchaseRows : emptyRow(['Garita','Fecha','Hora','Cantidad (gal)','Costo (Q)','Responsable']));
+
+  XLSX.utils.book_append_sheet(wb, wsDaily, 'Diaria');
+  XLSX.utils.book_append_sheet(wb, wsWeekly, 'Semanal');
+  XLSX.utils.book_append_sheet(wb, wsPurchase, 'Compras');
+
+  XLSX.writeFile(wb, `xochi-generadores-historial-${todayStr()}.xlsx`);
 });
 
 /* ---------- Init + polling de sincronización ---------- */
