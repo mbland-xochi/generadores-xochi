@@ -671,20 +671,37 @@ document.getElementById('btnDownloadJSON').addEventListener('click', ()=>{
 });
 
 document.getElementById('btnDownloadCSV').addEventListener('click', ()=>{
-  const dailyRows = [];
-  const weeklyRows = [];
-  const purchaseRows = [];
+  const rows = [];
   GARITAS.forEach(g=>{
-    db.garitas[g].daily.forEach(r=> dailyRows.push({garita:g, ...r}));
-    db.garitas[g].weekly.forEach(r=> weeklyRows.push({garita:g, ...r}));
-    (db.garitas[g].compras||[]).forEach(r=> purchaseRows.push({garita:g, ...r}));
+    db.garitas[g].daily.forEach(r=> rows.push({
+      garita: GARITA_LABEL[g], tipo: 'Inspección diaria', fecha: fmtFecha(r.fecha), hora: '',
+      nivel_pct: r.nivel, tecnico: r.tecnico||'', supervisor: '',
+      test_electrica: '', test_arranque: '', notas: '',
+      cantidad_galones: '', costo: '', responsable_compra: '',
+      alerta: r.alerta ? 'SI' : 'NO'
+    }));
+    db.garitas[g].weekly.forEach(r=> rows.push({
+      garita: GARITA_LABEL[g], tipo: 'Inspección semanal', fecha: fmtFecha(r.fecha), hora: '',
+      nivel_pct: '', tecnico: '', supervisor: r.supervisor||'',
+      test_electrica: r.test1==='bueno'?'Bueno':'No bueno',
+      test_arranque: r.test2==='bueno'?'Bueno':'No bueno',
+      notas: r.notas||'',
+      cantidad_galones: '', costo: '', responsable_compra: '',
+      alerta: r.alerta ? 'SI' : 'NO'
+    }));
+    (db.garitas[g].compras||[]).forEach(r=> rows.push({
+      garita: GARITA_LABEL[g], tipo: 'Compra de combustible', fecha: fmtFecha(r.fecha), hora: r.hora||'',
+      nivel_pct: '', tecnico: '', supervisor: '',
+      test_electrica: '', test_arranque: '', notas: '',
+      cantidad_galones: r.cantidad, costo: r.costo, responsable_compra: r.responsable||'',
+      alerta: ''
+    }));
   });
-  const dailyCSV = toCSV(dailyRows, ['garita','fecha','tecnico','nivel','alerta']);
-  const weeklyCSV = toCSV(weeklyRows, ['garita','fecha','supervisor','test1','test2','notas','alerta']);
-  const purchaseCSV = toCSV(purchaseRows, ['garita','fecha','hora','cantidad','costo','responsable']);
-  downloadFile(`xochi-generadores-diaria-${todayStr()}.csv`, dailyCSV, 'text/csv');
-  setTimeout(()=> downloadFile(`xochi-generadores-semanal-${todayStr()}.csv`, weeklyCSV, 'text/csv'), 300);
-  setTimeout(()=> downloadFile(`xochi-generadores-compras-${todayStr()}.csv`, purchaseCSV, 'text/csv'), 600);
+  rows.sort((a,b)=> (a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0));
+
+  const headers = ['garita','tipo','fecha','hora','nivel_pct','tecnico','supervisor','test_electrica','test_arranque','notas','cantidad_galones','costo','responsable_compra','alerta'];
+  const csv = '\uFEFF' + toCSV(rows, headers); // BOM para que Excel muestre bien los acentos
+  downloadFile(`xochi-generadores-historial-${todayStr()}.csv`, csv, 'text/csv;charset=utf-8;');
 });
 
 /* ---------- Init + polling de sincronización ---------- */
