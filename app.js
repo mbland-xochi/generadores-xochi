@@ -3,8 +3,9 @@ const GARITA_LABEL = {garita1:'Garita 1',garita2:'Garita 2',garita3:'Garita 3',g
 const THRESHOLD = 25; // 1/4 de tanque
 const POLL_MS = 30000; // refresco automático para reflejar cambios de otros usuarios
 
-let db = { settings: { tecnico:'', supervisor:'' }, garitas: {} };
+let db = { settings: { tecnico:'', supervisor:'' }, garitas: {}, perfiles: {} };
 GARITAS.forEach(g => db.garitas[g] = { daily: [], weekly: [], compras: [] });
+GARITAS.forEach(g => db.perfiles[g] = { capacidad_galones:0, consumo_gal_hora:0, tiempo_traslado_min:0, tiempo_llenado_min:0, notas:'' });
 
 let weeklySelection = {};
 GARITAS.forEach(g => weeklySelection[g] = { test1: null, test2: null });
@@ -67,6 +68,12 @@ function showConfigWarning(){
 }
 
 function todayStr(){ return new Date().toISOString().slice(0,10); }
+// Blindaje: si por alguna razón la fecha llega con hora/zona (ISO completo),
+// nos quedamos solo con la parte "yyyy-MM-dd" para mostrarla siempre limpia.
+function fmtFecha(v){
+  if(!v) return '—';
+  return String(v).slice(0,10);
+}
 function latest(arr){ return arr.length ? arr[arr.length-1] : null; }
 function fuelColor(pct){
   if(pct < THRESHOLD) return 'var(--danger)';
@@ -121,8 +128,8 @@ function renderSummary(){
         <div class="bar-track"><div class="bar-fill" style="width:${pct||0}%;background:${pct!==null?fuelColor(pct):'var(--border)'}"></div></div>
       </div>
       <div class="meta">
-        Última diaria: ${st.dl ? st.dl.fecha : '—'}<br>
-        Última semanal: ${st.wl ? st.wl.fecha : '—'}
+        Última diaria: ${st.dl ? fmtFecha(st.dl.fecha) : '—'}<br>
+        Última semanal: ${st.wl ? fmtFecha(st.wl.fecha) : '—'}
       </div>
     `;
     grid.appendChild(card);
@@ -154,6 +161,15 @@ function buildGaritaView(g){
         <div class="threshold-note">Alerta automática de reposición cuando el nivel baja de ${THRESHOLD}% (¼ de tanque).</div>
       </div>
       <button class="fuel-btn" id="purchaseBtn-${g}" data-g="${g}">⛽ Compra de combustible</button>
+    </div>
+
+    <div class="card">
+      <h3 style="display:flex;justify-content:space-between;align-items:center;">
+        Perfil de combustible
+        <button class="fuel-btn" style="padding:6px 12px;font-size:11px;" id="profileEditBtn-${g}" data-g="${g}">✎ Editar</button>
+      </h3>
+      <div class="card-sub">Capacidad, consumo y logística de reabastecimiento — referencia para planificar compras.</div>
+      <div id="profileInfo-${g}"></div>
     </div>
 
     <div id="alertBlock-${g}"></div>
@@ -252,7 +268,7 @@ function renderGarita(g){
     fv.style.color = fuelColor(st.dl.nivel);
     fb.style.width = st.dl.nivel + '%';
     fb.style.background = fuelColor(st.dl.nivel);
-    fu.textContent = 'Último registro: ' + st.dl.fecha + (st.dl.tecnico ? ' · '+st.dl.tecnico : '');
+    fu.textContent = 'Último registro: ' + fmtFecha(st.dl.fecha) + (st.dl.tecnico ? ' · '+st.dl.tecnico : '');
   } else {
     fv.textContent = '—';
     fb.style.width = '0%';
@@ -268,7 +284,43 @@ function renderGarita(g){
     alertBlock.innerHTML = '';
   }
 
+  renderProfileInfo(g);
   renderLog(g, currentLogView[g] || 'daily');
+}
+
+function renderProfileInfo(g){
+  const perfil = db.perfiles[g] || {};
+  const cap = Number(perfil.capacidad_galones)||0;
+  const cons = Number(perfil.consumo_gal_hora)||0;
+  const container = document.getElementById('profileInfo-'+g);
+  if(!container) return;
+
+  if(!cap){
+    container.innerHTML = '<div class="empty-log">Sin perfil configurado — haz clic en "Editar" para registrar la capacidad del tanque.</div>';
+    return;
+  }
+
+  const st = garitaStatus(g);
+  const nivelPct = st.dl ? st.dl.nivel : null;
+  let autonomiaTxt = '—';
+  if(nivelPct !== null && cons > 0){
+    const galonesActuales = (nivelPct/100) * cap;
+    const horas = galonesActuales / cons;
+    autonomiaTxt = horas >= 1 ? `${horas.toFixed(1)} horas` : `${Math.round(horas*60)} min`;
+  }
+
+  let rows = `
+    <div class="meta" style="font-size:12.5px;line-height:1.9;">
+      <b style="color:var(--text);">Capacidad del tanque:</b> ${cap} galones<br>
+      ${cons > 0 ? `<b style="color:var(--text);">Consumo estimado:</b> ${cons} gal/hora<br>` : ''}
+      ${cons > 0 ? `<b style="color:var(--text);">Autonomía estimada al nivel actual:</b> ${autonomiaTxt}<br>` : ''}
+      ${perfil.tiempo_traslado_min ? `<b style="color:var(--text);">Traslado ida y vuelta a gasolinera:</b> ~${perfil.tiempo_traslado_min} min<br>` : ''}
+      ${perfil.tiempo_llenado_min ? `<b style="color:var(--text);">Tiempo de llenado:</b> ~${perfil.tiempo_llenado_min} min por caneca de 5 gal<br>` : ''}
+    </div>`;
+  if(perfil.notas){
+    rows += `<div class="threshold-note" style="margin-top:8px;">${perfil.notas}</div>`;
+  }
+  container.innerHTML = rows;
 }
 
 function renderLog(g, type){
@@ -281,15 +333,15 @@ function renderLog(g, type){
   }
   if(type==='daily'){
     container.innerHTML = `<table><thead><tr><th>Fecha</th><th>Técnico</th><th>Nivel</th></tr></thead><tbody>
-      ${rows.map(r=>`<tr><td class="mono">${r.fecha}</td><td>${r.tecnico||'—'}</td><td class="mono" style="color:${fuelColor(r.nivel)}">${r.nivel}%${r.nivel<THRESHOLD?' ⚠':''}</td></tr>`).join('')}
+      ${rows.map(r=>`<tr><td class="mono">${fmtFecha(r.fecha)}</td><td>${r.tecnico||'—'}</td><td class="mono" style="color:${fuelColor(r.nivel)}">${r.nivel}%${r.nivel<THRESHOLD?' ⚠':''}</td></tr>`).join('')}
     </tbody></table>`;
   } else if(type==='weekly'){
     container.innerHTML = `<table><thead><tr><th>Fecha</th><th>Supervisor</th><th>Prueba eléctrica</th><th>Arranque</th></tr></thead><tbody>
-      ${rows.map(r=>`<tr><td class="mono">${r.fecha}</td><td>${r.supervisor||'—'}</td><td style="color:${r.test1==='bueno'?'var(--good)':'#f6b3ac'}">${r.test1==='bueno'?'Bueno':'No bueno'}</td><td style="color:${r.test2==='bueno'?'var(--good)':'#f6b3ac'}">${r.test2==='bueno'?'Bueno':'No bueno'}</td></tr>`).join('')}
+      ${rows.map(r=>`<tr><td class="mono">${fmtFecha(r.fecha)}</td><td>${r.supervisor||'—'}</td><td style="color:${r.test1==='bueno'?'var(--good)':'#f6b3ac'}">${r.test1==='bueno'?'Bueno':'No bueno'}</td><td style="color:${r.test2==='bueno'?'var(--good)':'#f6b3ac'}">${r.test2==='bueno'?'Bueno':'No bueno'}</td></tr>`).join('')}
     </tbody></table>`;
   } else {
     container.innerHTML = `<table><thead><tr><th>Fecha</th><th>Hora</th><th>Cantidad</th><th>Costo</th><th>Responsable</th></tr></thead><tbody>
-      ${rows.map(r=>`<tr><td class="mono">${r.fecha}</td><td class="mono">${r.hora||'—'}</td><td class="mono">${formatGal(r.cantidad)}</td><td class="mono">${formatQ(r.costo)}</td><td>${r.responsable||'—'}</td></tr>`).join('')}
+      ${rows.map(r=>`<tr><td class="mono">${fmtFecha(r.fecha)}</td><td class="mono">${r.hora||'—'}</td><td class="mono">${formatGal(r.cantidad)}</td><td class="mono">${formatQ(r.costo)}</td><td>${r.responsable||'—'}</td></tr>`).join('')}
     </tbody></table>`;
   }
 }
@@ -399,6 +451,10 @@ GARITAS.forEach(g=>{
     openPurchaseModal(g);
   });
 
+  document.getElementById('profileEditBtn-'+g).addEventListener('click', ()=>{
+    openProfileModal(g);
+  });
+
   document.querySelectorAll(`.log-toggle button[data-g="${g}"]`).forEach(btn=>{
     btn.addEventListener('click', ()=>{
       document.querySelectorAll(`.log-toggle button[data-g="${g}"]`).forEach(b=>b.classList.remove('active'));
@@ -484,11 +540,16 @@ document.getElementById('purchaseSave').addEventListener('click', async ()=>{
       costo,
       responsable: document.getElementById('purchaseResponsable').value.trim()
     };
-    await apiPost('savePurchase', entry);
+    const result = await apiPost('savePurchase', entry);
     await loadAll();
     purchaseModal.classList.remove('show');
     renderGarita(purchaseGarita);
     refreshGlobal();
+    if(result && result.nivelActualizado !== null && result.nivelActualizado !== undefined){
+      alert(`Compra registrada. Nivel de diésel actualizado a ${result.nivelActualizado}%.`);
+    } else {
+      alert('Compra registrada. Configura el "Perfil de combustible" (capacidad del tanque) de esta garita para que el nivel se actualice automáticamente.');
+    }
   }catch(e){
     errEl.textContent = 'Error al guardar: ' + e.message;
     errEl.classList.add('show');
@@ -498,7 +559,54 @@ document.getElementById('purchaseSave').addEventListener('click', async ()=>{
   }
 });
 
-/* ---------- Historial general (con filtros) ---------- */
+/* ---------- Modal de perfil de combustible ---------- */
+let profileGarita = null;
+const profileModal = document.getElementById('profileModal');
+
+function openProfileModal(g){
+  profileGarita = g;
+  const perfil = db.perfiles[g] || {};
+  document.getElementById('profileModalTitle').textContent = `Perfil de combustible — ${GARITA_LABEL[g]}`;
+  document.getElementById('profileCapacidad').value = perfil.capacidad_galones || '';
+  document.getElementById('profileConsumo').value = perfil.consumo_gal_hora || '';
+  document.getElementById('profileTraslado').value = perfil.tiempo_traslado_min || '';
+  document.getElementById('profileLlenado').value = perfil.tiempo_llenado_min || '';
+  document.getElementById('profileNotas').value = perfil.notas || '';
+  document.getElementById('profileError').classList.remove('show');
+  profileModal.classList.add('show');
+}
+document.getElementById('closeProfile').addEventListener('click', ()=> profileModal.classList.remove('show'));
+profileModal.addEventListener('click', e=>{ if(e.target===profileModal) profileModal.classList.remove('show'); });
+
+document.getElementById('profileSave').addEventListener('click', async ()=>{
+  const errEl = document.getElementById('profileError');
+  errEl.classList.remove('show');
+  if(!isConfigured()){ errEl.textContent='Falta configurar APPS_SCRIPT_URL en config.js'; errEl.classList.add('show'); return; }
+
+  const capacidad_galones = parseFloat(document.getElementById('profileCapacidad').value) || 0;
+  const consumo_gal_hora = parseFloat(document.getElementById('profileConsumo').value) || 0;
+  const tiempo_traslado_min = parseFloat(document.getElementById('profileTraslado').value) || 0;
+  const tiempo_llenado_min = parseFloat(document.getElementById('profileLlenado').value) || 0;
+  const notas = document.getElementById('profileNotas').value.trim();
+
+  if(capacidad_galones <= 0){ errEl.textContent='Ingresa la capacidad del tanque en galones.'; errEl.classList.add('show'); return; }
+
+  const btn2 = document.getElementById('profileSave');
+  btn2.disabled = true;
+  setSync('saving');
+  try{
+    await apiPost('savePerfil', { garita: profileGarita, capacidad_galones, consumo_gal_hora, tiempo_traslado_min, tiempo_llenado_min, notas });
+    await loadAll();
+    profileModal.classList.remove('show');
+    renderGarita(profileGarita);
+  }catch(e){
+    errEl.textContent = 'Error al guardar: ' + e.message;
+    errEl.classList.add('show');
+    setSync('offline');
+  }finally{
+    btn2.disabled = false;
+  }
+});/* ---------- Historial general (con filtros) ---------- */
 function buildCombinedHistory(){
   const rows = [];
   GARITAS.forEach(g=>{
@@ -534,7 +642,7 @@ function renderHistorial(){
     return;
   }
   container.innerHTML = `<table><thead><tr><th>Fecha</th><th>Garita</th><th>Tipo</th><th>Detalle</th><th>Responsable</th></tr></thead><tbody>
-    ${rows.map(r=>`<tr><td class="mono">${r.fecha}</td><td>${GARITA_LABEL[r.garita]}</td><td>${r.tipoLabel}</td><td>${r.detalle}</td><td>${r.responsable||'—'}</td></tr>`).join('')}
+    ${rows.map(r=>`<tr><td class="mono">${fmtFecha(r.fecha)}</td><td>${GARITA_LABEL[r.garita]}</td><td>${r.tipoLabel}</td><td>${r.detalle}</td><td>${r.responsable||'—'}</td></tr>`).join('')}
   </tbody></table>`;
 }
 
