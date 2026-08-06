@@ -36,14 +36,6 @@
   <div class="content">
     <div class="panel-view" id="view-resumen">
       <div class="summary-grid" id="summaryGrid"></div>
-      <div class="card" style="margin-top:16px;">
-        <h3>Respaldo de datos</h3>
-        <div class="card-sub">Los datos ya viven en el Google Sheet conectado (descárgalo ahí con Archivo &gt; Descargar en cualquier momento). Aquí también puedes exportar una copia rápida.</div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;">
-          <button class="save-btn" id="btnDownloadJSON">Descargar todo (.json)</button>
-          <button class="save-btn" id="btnDownloadCSV">Descargar historial (.xlsx)</button>
-        </div>
-      </div>
     </div>
     <div id="garitaViews"></div>
 
@@ -113,38 +105,6 @@
   </div>
 </div>
 
-<div class="modal-overlay" id="profileModal">
-  <div class="modal">
-    <div class="modal-head">
-      <h3 id="profileModalTitle">Perfil de combustible</h3>
-      <button class="modal-close" id="closeProfile">✕</button>
-    </div>
-    <p class="hint">Estos datos permiten calcular la autonomía estimada y actualizar el nivel automáticamente al registrar una compra.</p>
-    <div class="field">
-      <label>Capacidad del tanque (galones)</label>
-      <input type="text" inputmode="decimal" id="profileCapacidad" placeholder="Ej. 66">
-    </div>
-    <div class="field">
-      <label>Consumo estimado (galones por hora)</label>
-      <input type="text" inputmode="decimal" id="profileConsumo" placeholder="Ej. 1.73">
-    </div>
-    <div class="field">
-      <label>Traslado ida y vuelta a gasolinera (minutos)</label>
-      <input type="text" inputmode="decimal" id="profileTraslado" placeholder="Ej. 22">
-    </div>
-    <div class="field">
-      <label>Tiempo de llenado por caneca de 5 gal (minutos)</label>
-      <input type="text" inputmode="decimal" id="profileLlenado" placeholder="Ej. 5">
-    </div>
-    <div class="field">
-      <label>Notas (opcional)</label>
-      <textarea id="profileNotas" placeholder="Ej. consumo variable según carga aplicada..."></textarea>
-    </div>
-    <button class="save-btn" id="profileSave">Guardar perfil</button>
-    <span class="error-flash" id="profileError"></span>
-  </div>
-</div>
-
 <div class="modal-overlay" id="settingsModal">
   <div class="modal">
     <div class="modal-head">
@@ -164,7 +124,6 @@
   </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="config.js"></script>
 <script src="app.js"></script>
 </body>
