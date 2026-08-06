@@ -95,5 +95,6 @@ descargarlo directamente ahí sin tocar la app.
 └── README.md
 ```
 
+
 `Code.gs` puedes dejarlo en el repo como referencia/respaldo del código,
 aunque GitHub Pages no lo ejecuta — solo vive activo dentro de Apps Script.
