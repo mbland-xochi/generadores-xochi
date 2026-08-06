@@ -3,9 +3,8 @@ const GARITA_LABEL = {garita1:'Garita 1',garita2:'Garita 2',garita3:'Garita 3',g
 const THRESHOLD = 25; // 1/4 de tanque
 const POLL_MS = 30000; // refresco automático para reflejar cambios de otros usuarios
 
-let db = { settings: { tecnico:'', supervisor:'' }, garitas: {}, perfiles: {} };
+let db = { settings: { tecnico:'', supervisor:'' }, garitas: {} };
 GARITAS.forEach(g => db.garitas[g] = { daily: [], weekly: [], compras: [] });
-GARITAS.forEach(g => db.perfiles[g] = { capacidad_galones:0, consumo_gal_hora:0, tiempo_traslado_min:0, tiempo_llenado_min:0, notas:'' });
 
 let weeklySelection = {};
 GARITAS.forEach(g => weeklySelection[g] = { test1: null, test2: null });
@@ -163,15 +162,6 @@ function buildGaritaView(g){
       <button class="fuel-btn" id="purchaseBtn-${g}" data-g="${g}">⛽ Compra de combustible</button>
     </div>
 
-    <div class="card">
-      <h3 style="display:flex;justify-content:space-between;align-items:center;">
-        Perfil de combustible
-        <button class="fuel-btn" style="padding:6px 12px;font-size:11px;" id="profileEditBtn-${g}" data-g="${g}">✎ Editar</button>
-      </h3>
-      <div class="card-sub">Capacidad, consumo y logística de reabastecimiento — referencia para planificar compras.</div>
-      <div id="profileInfo-${g}"></div>
-    </div>
-
     <div id="alertBlock-${g}"></div>
 
     <div class="card">
@@ -284,43 +274,7 @@ function renderGarita(g){
     alertBlock.innerHTML = '';
   }
 
-  renderProfileInfo(g);
   renderLog(g, currentLogView[g] || 'daily');
-}
-
-function renderProfileInfo(g){
-  const perfil = db.perfiles[g] || {};
-  const cap = Number(perfil.capacidad_galones)||0;
-  const cons = Number(perfil.consumo_gal_hora)||0;
-  const container = document.getElementById('profileInfo-'+g);
-  if(!container) return;
-
-  if(!cap){
-    container.innerHTML = '<div class="empty-log">Sin perfil configurado — haz clic en "Editar" para registrar la capacidad del tanque.</div>';
-    return;
-  }
-
-  const st = garitaStatus(g);
-  const nivelPct = st.dl ? st.dl.nivel : null;
-  let autonomiaTxt = '—';
-  if(nivelPct !== null && cons > 0){
-    const galonesActuales = (nivelPct/100) * cap;
-    const horas = galonesActuales / cons;
-    autonomiaTxt = horas >= 1 ? `${horas.toFixed(1)} horas` : `${Math.round(horas*60)} min`;
-  }
-
-  let rows = `
-    <div class="meta" style="font-size:12.5px;line-height:1.9;">
-      <b style="color:var(--text);">Capacidad del tanque:</b> ${cap} galones<br>
-      ${cons > 0 ? `<b style="color:var(--text);">Consumo estimado:</b> ${cons} gal/hora<br>` : ''}
-      ${cons > 0 ? `<b style="color:var(--text);">Autonomía estimada al nivel actual:</b> ${autonomiaTxt}<br>` : ''}
-      ${perfil.tiempo_traslado_min ? `<b style="color:var(--text);">Traslado ida y vuelta a gasolinera:</b> ~${perfil.tiempo_traslado_min} min<br>` : ''}
-      ${perfil.tiempo_llenado_min ? `<b style="color:var(--text);">Tiempo de llenado:</b> ~${perfil.tiempo_llenado_min} min por caneca de 5 gal<br>` : ''}
-    </div>`;
-  if(perfil.notas){
-    rows += `<div class="threshold-note" style="margin-top:8px;">${perfil.notas}</div>`;
-  }
-  container.innerHTML = rows;
 }
 
 function renderLog(g, type){
@@ -451,10 +405,6 @@ GARITAS.forEach(g=>{
     openPurchaseModal(g);
   });
 
-  document.getElementById('profileEditBtn-'+g).addEventListener('click', ()=>{
-    openProfileModal(g);
-  });
-
   document.querySelectorAll(`.log-toggle button[data-g="${g}"]`).forEach(btn=>{
     btn.addEventListener('click', ()=>{
       document.querySelectorAll(`.log-toggle button[data-g="${g}"]`).forEach(b=>b.classList.remove('active'));
@@ -548,7 +498,7 @@ document.getElementById('purchaseSave').addEventListener('click', async ()=>{
     if(result && result.nivelActualizado !== null && result.nivelActualizado !== undefined){
       alert(`Compra registrada. Nivel de diésel actualizado a ${result.nivelActualizado}%.`);
     } else {
-      alert('Compra registrada. Configura el "Perfil de combustible" (capacidad del tanque) de esta garita para que el nivel se actualice automáticamente.');
+      alert('Compra registrada.');
     }
   }catch(e){
     errEl.textContent = 'Error al guardar: ' + e.message;
@@ -559,54 +509,7 @@ document.getElementById('purchaseSave').addEventListener('click', async ()=>{
   }
 });
 
-/* ---------- Modal de perfil de combustible ---------- */
-let profileGarita = null;
-const profileModal = document.getElementById('profileModal');
-
-function openProfileModal(g){
-  profileGarita = g;
-  const perfil = db.perfiles[g] || {};
-  document.getElementById('profileModalTitle').textContent = `Perfil de combustible — ${GARITA_LABEL[g]}`;
-  document.getElementById('profileCapacidad').value = perfil.capacidad_galones || '';
-  document.getElementById('profileConsumo').value = perfil.consumo_gal_hora || '';
-  document.getElementById('profileTraslado').value = perfil.tiempo_traslado_min || '';
-  document.getElementById('profileLlenado').value = perfil.tiempo_llenado_min || '';
-  document.getElementById('profileNotas').value = perfil.notas || '';
-  document.getElementById('profileError').classList.remove('show');
-  profileModal.classList.add('show');
-}
-document.getElementById('closeProfile').addEventListener('click', ()=> profileModal.classList.remove('show'));
-profileModal.addEventListener('click', e=>{ if(e.target===profileModal) profileModal.classList.remove('show'); });
-
-document.getElementById('profileSave').addEventListener('click', async ()=>{
-  const errEl = document.getElementById('profileError');
-  errEl.classList.remove('show');
-  if(!isConfigured()){ errEl.textContent='Falta configurar APPS_SCRIPT_URL en config.js'; errEl.classList.add('show'); return; }
-
-  const capacidad_galones = parseFloat(document.getElementById('profileCapacidad').value) || 0;
-  const consumo_gal_hora = parseFloat(document.getElementById('profileConsumo').value) || 0;
-  const tiempo_traslado_min = parseFloat(document.getElementById('profileTraslado').value) || 0;
-  const tiempo_llenado_min = parseFloat(document.getElementById('profileLlenado').value) || 0;
-  const notas = document.getElementById('profileNotas').value.trim();
-
-  if(capacidad_galones <= 0){ errEl.textContent='Ingresa la capacidad del tanque en galones.'; errEl.classList.add('show'); return; }
-
-  const btn2 = document.getElementById('profileSave');
-  btn2.disabled = true;
-  setSync('saving');
-  try{
-    await apiPost('savePerfil', { garita: profileGarita, capacidad_galones, consumo_gal_hora, tiempo_traslado_min, tiempo_llenado_min, notas });
-    await loadAll();
-    profileModal.classList.remove('show');
-    renderGarita(profileGarita);
-  }catch(e){
-    errEl.textContent = 'Error al guardar: ' + e.message;
-    errEl.classList.add('show');
-    setSync('offline');
-  }finally{
-    btn2.disabled = false;
-  }
-});/* ---------- Historial general (con filtros) ---------- */
+/* ---------- Historial general (con filtros) ---------- */
 function buildCombinedHistory(){
   const rows = [];
   GARITAS.forEach(g=>{
@@ -648,76 +551,6 @@ function renderHistorial(){
 
 document.getElementById('filterGarita').addEventListener('change', renderHistorial);
 document.getElementById('filterTipo').addEventListener('change', renderHistorial);
-
-/* ---------- Descarga de respaldo ---------- */
-function toCSV(rows, headers){
-  // Excel con configuración regional en español espera punto y coma (;)
-  // como separador de columnas al abrir un .csv con doble clic — con
-  // coma, mete todo el contenido en una sola columna.
-  const DELIM = ';';
-  const escape = v => `"${String(v===undefined||v===null?'':v).replace(/"/g,'""')}"`;
-  const lines = [headers.map(escape).join(DELIM)];
-  rows.forEach(r => lines.push(headers.map(h=>escape(r[h])).join(DELIM)));
-  return lines.join('\r\n');
-}
-
-function downloadFile(filename, content, mime){
-  const blob = new Blob([content], {type: mime});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = filename;
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
-
-document.getElementById('btnDownloadJSON').addEventListener('click', ()=>{
-  downloadFile(`xochi-generadores-${todayStr()}.json`, JSON.stringify(db, null, 2), 'application/json');
-});
-
-document.getElementById('btnDownloadCSV').addEventListener('click', ()=>{
-  if(typeof XLSX === 'undefined'){
-    alert('No se pudo cargar la librería de Excel (sin conexión a internet). Intenta de nuevo cuando tengas conexión.');
-    return;
-  }
-
-  const byFechaDesc = (a,b)=> (a.Fecha < b.Fecha ? 1 : a.Fecha > b.Fecha ? -1 : 0);
-
-  const dailyRows = [];
-  const weeklyRows = [];
-  const purchaseRows = [];
-  GARITAS.forEach(g=>{
-    db.garitas[g].daily.forEach(r=> dailyRows.push({
-      Garita: GARITA_LABEL[g], Fecha: fmtFecha(r.fecha), Tecnico: r.tecnico||'',
-      'Nivel (%)': r.nivel, Alerta: r.alerta ? 'SI' : 'NO'
-    }));
-    db.garitas[g].weekly.forEach(r=> weeklyRows.push({
-      Garita: GARITA_LABEL[g], Fecha: fmtFecha(r.fecha), Supervisor: r.supervisor||'',
-      'Prueba electrica': r.test1==='bueno' ? 'Bueno' : 'No bueno',
-      'Prueba de arranque': r.test2==='bueno' ? 'Bueno' : 'No bueno',
-      Notas: r.notas||'', Alerta: r.alerta ? 'SI' : 'NO'
-    }));
-    (db.garitas[g].compras||[]).forEach(r=> purchaseRows.push({
-      Garita: GARITA_LABEL[g], Fecha: fmtFecha(r.fecha), Hora: r.hora||'',
-      'Cantidad (gal)': r.cantidad, 'Costo (Q)': r.costo, Responsable: r.responsable||''
-    }));
-  });
-  dailyRows.sort(byFechaDesc);
-  weeklyRows.sort(byFechaDesc);
-  purchaseRows.sort(byFechaDesc);
-
-  const emptyRow = headers => [ headers.reduce((o,h)=>{ o[h]=''; return o; }, {}) ];
-
-  const wb = XLSX.utils.book_new();
-  const wsDaily = XLSX.utils.json_to_sheet(dailyRows.length ? dailyRows : emptyRow(['Garita','Fecha','Tecnico','Nivel (%)','Alerta']));
-  const wsWeekly = XLSX.utils.json_to_sheet(weeklyRows.length ? weeklyRows : emptyRow(['Garita','Fecha','Supervisor','Prueba electrica','Prueba de arranque','Notas','Alerta']));
-  const wsPurchase = XLSX.utils.json_to_sheet(purchaseRows.length ? purchaseRows : emptyRow(['Garita','Fecha','Hora','Cantidad (gal)','Costo (Q)','Responsable']));
-
-  XLSX.utils.book_append_sheet(wb, wsDaily, 'Diaria');
-  XLSX.utils.book_append_sheet(wb, wsWeekly, 'Semanal');
-  XLSX.utils.book_append_sheet(wb, wsPurchase, 'Compras');
-
-  XLSX.writeFile(wb, `xochi-generadores-historial-${todayStr()}.xlsx`);
-});
 
 /* ---------- Init + polling de sincronización ---------- */
 async function init(){
