@@ -1,6 +1,5 @@
 # Xochi · Generadores (versión GitHub Pages + Google Sheets)
 
-
 Versión estática pensada para subir a GitHub Pages. La "base de datos" es un
 Google Sheet tuyo, así que:
 
