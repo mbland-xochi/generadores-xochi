@@ -309,6 +309,15 @@ function buildGaritaView(g){
         <label>Observaciones (opcional)</label>
         <textarea id="weeklyNotas-${g}" placeholder="Detalles de la prueba, hallazgos, acciones tomadas..."></textarea>
       </div>
+      <div class="field">
+        <label>Firma del supervisor — certifica esta inspección</label>
+        <div class="signature-wrap">
+          <canvas id="signatureCanvasWeekly-${g}"></canvas>
+        </div>
+        <div style="display:flex;justify-content:flex-end;margin-top:6px;">
+          <button type="button" class="fuel-btn" style="padding:6px 12px;font-size:11px;" id="signatureClearWeekly-${g}">Limpiar firma</button>
+        </div>
+      </div>
       <button class="save-btn" id="weeklySave-${g}">Guardar inspección semanal</button>
       <span class="saved-flash" id="weeklyFlash-${g}">Guardado ✓</span>
       <span class="error-flash" id="weeklyError-${g}"></span>
@@ -383,8 +392,8 @@ function renderLog(g, type){
       ${rows.map(r=>`<tr><td class="mono">${fmtFecha(r.fecha)}</td><td>${r.tecnico||'—'}</td><td class="mono" style="color:${fuelColor(r.nivel)}">${r.nivel}%${r.nivel<THRESHOLD?' ⚠':''}</td><td>${r.estado_control ? (r.estado_control==='automatico'?'Automático':'Manual') : '—'}</td><td style="color:${r.firma?'var(--good)':'var(--text-muted)'}">${r.firma?'✓':'—'}</td></tr>`).join('')}
     </tbody></table>`;
   } else if(type==='weekly'){
-    container.innerHTML = `<table><thead><tr><th>Fecha</th><th>Supervisor</th><th>Prueba eléctrica</th><th>Arranque</th></tr></thead><tbody>
-      ${rows.map(r=>`<tr><td class="mono">${fmtFecha(r.fecha)}</td><td>${r.supervisor||'—'}</td><td style="color:${r.test1==='bueno'?'var(--good)':'#f6b3ac'}">${r.test1==='bueno'?'Bueno':'No bueno'}</td><td style="color:${r.test2==='bueno'?'var(--good)':'#f6b3ac'}">${r.test2==='bueno'?'Bueno':'No bueno'}</td></tr>`).join('')}
+    container.innerHTML = `<table><thead><tr><th>Fecha</th><th>Supervisor</th><th>Prueba eléctrica</th><th>Arranque</th><th>Firma</th></tr></thead><tbody>
+      ${rows.map(r=>`<tr><td class="mono">${fmtFecha(r.fecha)}</td><td>${r.supervisor||'—'}</td><td style="color:${r.test1==='bueno'?'var(--good)':'#f6b3ac'}">${r.test1==='bueno'?'Bueno':'No bueno'}</td><td style="color:${r.test2==='bueno'?'var(--good)':'#f6b3ac'}">${r.test2==='bueno'?'Bueno':'No bueno'}</td><td style="color:${r.firma?'var(--good)':'var(--text-muted)'}">${r.firma?'✓':'—'}</td></tr>`).join('')}
     </tbody></table>`;
   } else {
     container.innerHTML = `<table><thead><tr><th>Fecha</th><th>Hora</th><th>Cantidad</th><th>Costo</th><th>Responsable</th></tr></thead><tbody>
@@ -403,6 +412,7 @@ function switchTab(name){
   else {
     renderGarita(name);
     if(signaturePads[name]) signaturePads[name].resize();
+    if(weeklySignaturePads[name]) weeklySignaturePads[name].resize();
   }
 }
 
@@ -416,8 +426,8 @@ const garitaViewsContainer = document.getElementById('garitaViews');
 GARITAS.forEach(g=> garitaViewsContainer.appendChild(buildGaritaView(g)));
 
 /* ---------- Firma táctil (Pointer Events: funciona con dedo, mouse o stylus) ---------- */
-function setupSignaturePad(g){
-  const canvas = document.getElementById('signatureCanvas-'+g);
+function setupSignaturePad(canvasId, clearBtnId){
+  const canvas = document.getElementById(canvasId);
   const ctx = canvas.getContext('2d');
   let drawing = false;
   let hasSignature = false;
@@ -472,7 +482,7 @@ function setupSignaturePad(g){
   canvas.addEventListener('pointerleave', end);
   canvas.addEventListener('pointercancel', end);
 
-  document.getElementById('signatureClear-'+g).addEventListener('click', ()=>{
+  document.getElementById(clearBtnId).addEventListener('click', ()=>{
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     hasSignature = false;
   });
@@ -488,7 +498,11 @@ function setupSignaturePad(g){
 }
 
 let signaturePads = {};
-GARITAS.forEach(g => signaturePads[g] = setupSignaturePad(g));
+let weeklySignaturePads = {};
+GARITAS.forEach(g => {
+  signaturePads[g] = setupSignaturePad('signatureCanvas-'+g, 'signatureClear-'+g);
+  weeklySignaturePads[g] = setupSignaturePad('signatureCanvasWeekly-'+g, 'signatureClearWeekly-'+g);
+});
 
 /* ---------- Wire up interactions per garita ---------- */
 GARITAS.forEach(g=>{
@@ -575,6 +589,11 @@ GARITAS.forEach(g=>{
       errEl.classList.add('show');
       return;
     }
+    if(weeklySignaturePads[g].isEmpty()){
+      errEl.textContent = 'La firma del supervisor es obligatoria para certificar esta inspección.';
+      errEl.classList.add('show');
+      return;
+    }
     const btn = document.getElementById('weeklySave-'+g);
     btn.disabled = true;
     setSync('saving');
@@ -585,11 +604,13 @@ GARITAS.forEach(g=>{
         supervisor: document.getElementById('weeklySupervisor-'+g).value.trim(),
         test1: sel.test1,
         test2: sel.test2,
-        notas: document.getElementById('weeklyNotas-'+g).value.trim()
+        notas: document.getElementById('weeklyNotas-'+g).value.trim(),
+        firma: weeklySignaturePads[g].toDataURL()
       };
       await apiPost('saveWeekly', entry);
       await loadAll();
       flash('weeklyFlash-'+g);
+      weeklySignaturePads[g].clear();
       toggleSelections[g].test1 = null;
       toggleSelections[g].test2 = null;
       document.querySelectorAll(`.toggle-btn[data-g="${g}"][data-field="test1"]`).forEach(b=>b.classList.remove('selected'));
@@ -705,7 +726,7 @@ function buildCombinedHistory(){
     });
     db.garitas[g].weekly.forEach(r => rows.push({
       garita:g, tipo:'weekly', tipoLabel:'Inspección semanal', fecha:r.fecha,
-      detalle: `Eléctrica: ${r.test1==='bueno'?'Bueno':'No bueno'} · Arranque: ${r.test2==='bueno'?'Bueno':'No bueno'}`,
+      detalle: `Eléctrica: ${r.test1==='bueno'?'Bueno':'No bueno'} · Arranque: ${r.test2==='bueno'?'Bueno':'No bueno'}${r.firma?' · ✓ Firmado':''}`,
       responsable:r.supervisor
     }));
     (db.garitas[g].compras||[]).forEach(r => rows.push({
