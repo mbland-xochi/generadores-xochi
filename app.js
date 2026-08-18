@@ -6,11 +6,27 @@ const POLL_MS = 30000; // refresco automático para reflejar cambios de otros us
 let db = { settings: { tecnico:'', supervisor:'' }, garitas: {} };
 GARITAS.forEach(g => db.garitas[g] = { daily: [], weekly: [], compras: [] });
 
-let weeklySelection = {};
-GARITAS.forEach(g => weeklySelection[g] = { test1: null, test2: null });
+// Estado de todos los botones tipo "toggle" (Bueno/No bueno, Automático/Manual)
+// por garita, agrupados por campo.
+let toggleSelections = {};
+GARITAS.forEach(g => toggleSelections[g] = { test1:null, test2:null, estadoControl:null, estadoTransferencia:null });
 let currentLogView = {};
 
-/* ---------- Apps Script API helpers ---------- */
+function todayStr(){ return new Date().toISOString().slice(0,10); }
+// Blindaje: si por alguna razón la fecha llega con hora/zona (ISO completo),
+// nos quedamos solo con la parte "yyyy-MM-dd" para mostrarla siempre limpia.
+function fmtFecha(v){
+  if(!v) return '—';
+  return String(v).slice(0,10);
+}
+function nowTimeStr(){
+  const d = new Date();
+  return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+}
+function formatQ(n){ return 'Q ' + Number(n||0).toFixed(2); }
+function formatGal(n){ return Number(n||0).toFixed(1) + ' gal'; }
+
+/* ---------- API helpers ---------- */
 function setSync(state){
   const el = document.getElementById('syncIndicator');
   el.classList.remove('offline','saving');
@@ -66,13 +82,6 @@ function showConfigWarning(){
   banner.classList.add('show');
 }
 
-function todayStr(){ return new Date().toISOString().slice(0,10); }
-// Blindaje: si por alguna razón la fecha llega con hora/zona (ISO completo),
-// nos quedamos solo con la parte "yyyy-MM-dd" para mostrarla siempre limpia.
-function fmtFecha(v){
-  if(!v) return '—';
-  return String(v).slice(0,10);
-}
 function latest(arr){ return arr.length ? arr[arr.length-1] : null; }
 function fuelColor(pct){
   if(pct < THRESHOLD) return 'var(--danger)';
@@ -166,7 +175,7 @@ function buildGaritaView(g){
 
     <div class="card">
       <h3>Inspección diaria</h3>
-      <div class="card-sub">Registro del nivel de combustible del tanque de diésel.</div>
+      <div class="card-sub">Registro del nivel de combustible y Checklist Rutinario Eléctrico.</div>
       <div class="field">
         <label>Fecha</label>
         <input type="date" id="dailyDate-${g}">
@@ -182,6 +191,80 @@ function buildGaritaView(g){
           <span class="pct mono" id="dailyPct-${g}">75%</span>
         </div>
       </div>
+
+      <div class="checklist-subhead">⚡ Checklist Rutinario Eléctrico</div>
+
+      <div class="checklist-group-label">Generador</div>
+      <div class="field-row">
+        <div class="field">
+          <label>Horas de trabajo — h</label>
+          <input type="number" min="0" id="horasH-${g}" placeholder="0">
+        </div>
+        <div class="field">
+          <label>Horas de trabajo — m</label>
+          <input type="number" min="0" max="59" id="horasM-${g}" placeholder="0">
+        </div>
+      </div>
+      <div class="field">
+        <label>Voltaje de batería (V)</label>
+        <input type="number" step="0.1" id="voltajeBateria-${g}" placeholder="Ej. 12.6">
+      </div>
+      <div class="field">
+        <label>Estado de control de generador</label>
+        <div class="toggle-row">
+          <button class="toggle-btn neutral" data-field="estadoControl" data-val="automatico" data-g="${g}">Automático</button>
+          <button class="toggle-btn neutral" data-field="estadoControl" data-val="manual" data-g="${g}">Manual</button>
+        </div>
+      </div>
+
+      <div class="checklist-group-label">Voltaje y amperaje</div>
+      <div class="field-row">
+        <div class="field">
+          <label>Fase 1 / Neutro (V)</label>
+          <input type="number" step="0.1" id="fase1Neutro-${g}">
+        </div>
+        <div class="field">
+          <label>Fase 2 / Neutro (V)</label>
+          <input type="number" step="0.1" id="fase2Neutro-${g}">
+        </div>
+      </div>
+      <div class="field">
+        <label>Fase 1 / Fase 2 (V)</label>
+        <input type="number" step="0.1" id="fase1Fase2-${g}">
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Amperaje Fase 1 (A)</label>
+          <input type="number" step="0.1" id="ampFase1-${g}">
+        </div>
+        <div class="field">
+          <label>Amperaje Fase 2 (A)</label>
+          <input type="number" step="0.1" id="ampFase2-${g}">
+        </div>
+      </div>
+      <div class="field">
+        <label>Amperaje Neutro (A)</label>
+        <input type="number" step="0.1" id="ampNeutro-${g}">
+      </div>
+      <div class="field">
+        <label>Estado de transferencia</label>
+        <div class="toggle-row">
+          <button class="toggle-btn neutral" data-field="estadoTransferencia" data-val="automatico" data-g="${g}">Automático</button>
+          <button class="toggle-btn neutral" data-field="estadoTransferencia" data-val="manual" data-g="${g}">Manual</button>
+        </div>
+      </div>
+
+      <div class="checklist-group-label">Contador de energía</div>
+      <div class="field">
+        <label>kW/hora actual</label>
+        <input type="number" step="0.01" id="kwHora-${g}">
+      </div>
+
+      <div class="field">
+        <label>Notas de la inspección diaria</label>
+        <textarea id="notasDiaria-${g}" placeholder="Observaciones adicionales..."></textarea>
+      </div>
+
       <button class="save-btn" id="dailySave-${g}">Guardar inspección diaria</button>
       <span class="saved-flash" id="dailyFlash-${g}">Guardado ✓</span>
       <span class="error-flash" id="dailyError-${g}"></span>
@@ -201,15 +284,15 @@ function buildGaritaView(g){
       <div class="field">
         <label>1. Prueba eléctrica — pantalla y componentes</label>
         <div class="toggle-row">
-          <button class="toggle-btn good" data-test="test1" data-val="bueno" data-g="${g}">Bueno</button>
-          <button class="toggle-btn bad" data-test="test1" data-val="no_bueno" data-g="${g}">No bueno</button>
+          <button class="toggle-btn good" data-field="test1" data-val="bueno" data-g="${g}">Bueno</button>
+          <button class="toggle-btn bad" data-field="test1" data-val="no_bueno" data-g="${g}">No bueno</button>
         </div>
       </div>
       <div class="field">
         <label>2. Prueba de arranque del generador</label>
         <div class="toggle-row">
-          <button class="toggle-btn good" data-test="test2" data-val="bueno" data-g="${g}">Bueno</button>
-          <button class="toggle-btn bad" data-test="test2" data-val="no_bueno" data-g="${g}">No bueno</button>
+          <button class="toggle-btn good" data-field="test2" data-val="bueno" data-g="${g}">Bueno</button>
+          <button class="toggle-btn bad" data-field="test2" data-val="no_bueno" data-g="${g}">No bueno</button>
         </div>
       </div>
       <div class="field">
@@ -286,8 +369,8 @@ function renderLog(g, type){
     return;
   }
   if(type==='daily'){
-    container.innerHTML = `<table><thead><tr><th>Fecha</th><th>Técnico</th><th>Nivel</th></tr></thead><tbody>
-      ${rows.map(r=>`<tr><td class="mono">${fmtFecha(r.fecha)}</td><td>${r.tecnico||'—'}</td><td class="mono" style="color:${fuelColor(r.nivel)}">${r.nivel}%${r.nivel<THRESHOLD?' ⚠':''}</td></tr>`).join('')}
+    container.innerHTML = `<table><thead><tr><th>Fecha</th><th>Técnico</th><th>Nivel</th><th>Control</th></tr></thead><tbody>
+      ${rows.map(r=>`<tr><td class="mono">${fmtFecha(r.fecha)}</td><td>${r.tecnico||'—'}</td><td class="mono" style="color:${fuelColor(r.nivel)}">${r.nivel}%${r.nivel<THRESHOLD?' ⚠':''}</td><td>${r.estado_control ? (r.estado_control==='automatico'?'Automático':'Manual') : '—'}</td></tr>`).join('')}
     </tbody></table>`;
   } else if(type==='weekly'){
     container.innerHTML = `<table><thead><tr><th>Fecha</th><th>Supervisor</th><th>Prueba eléctrica</th><th>Arranque</th></tr></thead><tbody>
@@ -298,13 +381,6 @@ function renderLog(g, type){
       ${rows.map(r=>`<tr><td class="mono">${fmtFecha(r.fecha)}</td><td class="mono">${r.hora||'—'}</td><td class="mono">${formatGal(r.cantidad)}</td><td class="mono">${formatQ(r.costo)}</td><td>${r.responsable||'—'}</td></tr>`).join('')}
     </tbody></table>`;
   }
-}
-
-function formatQ(n){ return 'Q ' + Number(n||0).toFixed(2); }
-function formatGal(n){ return Number(n||0).toFixed(1) + ' gal'; }
-function nowTimeStr(){
-  const d = new Date();
-  return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
 }
 
 /* ---------- Tabs ---------- */
@@ -339,7 +415,14 @@ GARITAS.forEach(g=>{
     const btn = document.getElementById('dailySave-'+g);
     const errEl = document.getElementById('dailyError-'+g);
     errEl.classList.remove('show');
-    if(!isConfigured()){ errEl.textContent='Falta configurar APPS_SCRIPT_URL en config.js'; errEl.classList.add('show'); return; }
+
+    const sel = toggleSelections[g];
+    if(!sel.estadoControl || !sel.estadoTransferencia){
+      errEl.textContent = 'Selecciona el estado de control del generador y el estado de transferencia antes de guardar.';
+      errEl.classList.add('show');
+      return;
+    }
+
     btn.disabled = true;
     setSync('saving');
     try{
@@ -347,11 +430,36 @@ GARITAS.forEach(g=>{
         garita: g,
         fecha: document.getElementById('dailyDate-'+g).value || todayStr(),
         tecnico: document.getElementById('dailyTecnico-'+g).value.trim(),
-        nivel: parseInt(slider.value)
+        nivel: parseInt(slider.value),
+        horas_trabajo_h: document.getElementById('horasH-'+g).value,
+        horas_trabajo_m: document.getElementById('horasM-'+g).value,
+        voltaje_bateria: document.getElementById('voltajeBateria-'+g).value,
+        estado_control: sel.estadoControl,
+        fase1_neutro: document.getElementById('fase1Neutro-'+g).value,
+        fase2_neutro: document.getElementById('fase2Neutro-'+g).value,
+        fase1_fase2: document.getElementById('fase1Fase2-'+g).value,
+        amp_fase1: document.getElementById('ampFase1-'+g).value,
+        amp_fase2: document.getElementById('ampFase2-'+g).value,
+        amp_neutro: document.getElementById('ampNeutro-'+g).value,
+        estado_transferencia: sel.estadoTransferencia,
+        kw_hora: document.getElementById('kwHora-'+g).value,
+        notas: document.getElementById('notasDiaria-'+g).value.trim()
       };
       await apiPost('saveDaily', entry);
       await loadAll();
       flash('dailyFlash-'+g);
+
+      // Limpia los campos del checklist eléctrico para la siguiente inspección
+      // (fecha/técnico/nivel se mantienen prellenados como antes).
+      ['horasH','horasM','voltajeBateria','fase1Neutro','fase2Neutro','fase1Fase2','ampFase1','ampFase2','ampNeutro','kwHora'].forEach(id=>{
+        document.getElementById(id+'-'+g).value = '';
+      });
+      document.getElementById('notasDiaria-'+g).value = '';
+      toggleSelections[g].estadoControl = null;
+      toggleSelections[g].estadoTransferencia = null;
+      document.querySelectorAll(`.toggle-btn[data-g="${g}"][data-field="estadoControl"]`).forEach(b=>b.classList.remove('selected'));
+      document.querySelectorAll(`.toggle-btn[data-g="${g}"][data-field="estadoTransferencia"]`).forEach(b=>b.classList.remove('selected'));
+
       renderGarita(g);
       refreshGlobal();
     }catch(e){
@@ -364,10 +472,9 @@ GARITAS.forEach(g=>{
   });
 
   document.getElementById('weeklySave-'+g).addEventListener('click', async ()=>{
-    const sel = weeklySelection[g];
+    const sel = toggleSelections[g];
     const errEl = document.getElementById('weeklyError-'+g);
     errEl.classList.remove('show');
-    if(!isConfigured()){ errEl.textContent='Falta configurar APPS_SCRIPT_URL en config.js'; errEl.classList.add('show'); return; }
     if(!sel.test1 || !sel.test2){
       errEl.textContent = 'Selecciona el resultado de ambas pruebas antes de guardar.';
       errEl.classList.add('show');
@@ -388,8 +495,10 @@ GARITAS.forEach(g=>{
       await apiPost('saveWeekly', entry);
       await loadAll();
       flash('weeklyFlash-'+g);
-      weeklySelection[g] = {test1:null,test2:null};
-      document.querySelectorAll(`.toggle-btn[data-g="${g}"]`).forEach(b=>b.classList.remove('selected'));
+      toggleSelections[g].test1 = null;
+      toggleSelections[g].test2 = null;
+      document.querySelectorAll(`.toggle-btn[data-g="${g}"][data-field="test1"]`).forEach(b=>b.classList.remove('selected'));
+      document.querySelectorAll(`.toggle-btn[data-g="${g}"][data-field="test2"]`).forEach(b=>b.classList.remove('selected'));
       renderGarita(g);
       refreshGlobal();
     }catch(e){
@@ -416,9 +525,9 @@ GARITAS.forEach(g=>{
 
 document.querySelectorAll('.toggle-btn').forEach(btn=>{
   btn.addEventListener('click', ()=>{
-    const g = btn.dataset.g, test = btn.dataset.test, val = btn.dataset.val;
-    weeklySelection[g][test] = val;
-    document.querySelectorAll(`.toggle-btn[data-g="${g}"][data-test="${test}"]`).forEach(b=>b.classList.remove('selected'));
+    const g = btn.dataset.g, field = btn.dataset.field, val = btn.dataset.val;
+    toggleSelections[g][field] = val;
+    document.querySelectorAll(`.toggle-btn[data-g="${g}"][data-field="${field}"]`).forEach(b=>b.classList.remove('selected'));
     btn.classList.add('selected');
   });
 });
@@ -428,27 +537,6 @@ function flash(id){
   el.classList.add('show');
   setTimeout(()=>el.classList.remove('show'), 1600);
 }
-
-/* ---------- Settings modal ---------- */
-const settingsModal = document.getElementById('settingsModal');
-document.getElementById('btnSettings').addEventListener('click', ()=>{
-  document.getElementById('defTecnico').value = db.settings.tecnico || '';
-  document.getElementById('defSupervisor').value = db.settings.supervisor || '';
-  settingsModal.classList.add('show');
-});
-document.getElementById('closeSettings').addEventListener('click', ()=> settingsModal.classList.remove('show'));
-settingsModal.addEventListener('click', e=>{ if(e.target===settingsModal) settingsModal.classList.remove('show'); });
-document.getElementById('saveSettings').addEventListener('click', async ()=>{
-  const tecnico = document.getElementById('defTecnico').value.trim();
-  const supervisor = document.getElementById('defSupervisor').value.trim();
-  try{
-    await apiPost('saveSettings', { tecnico, supervisor });
-    db.settings = { tecnico, supervisor };
-    settingsModal.classList.remove('show');
-  }catch(e){
-    alert('No se pudieron guardar los ajustes: ' + e.message);
-  }
-});
 
 /* ---------- Modal de compra de combustible ---------- */
 let purchaseGarita = null;
@@ -513,10 +601,12 @@ document.getElementById('purchaseSave').addEventListener('click', async ()=>{
 function buildCombinedHistory(){
   const rows = [];
   GARITAS.forEach(g=>{
-    db.garitas[g].daily.forEach(r => rows.push({
-      garita:g, tipo:'daily', tipoLabel:'Inspección diaria', fecha:r.fecha,
-      detalle: `Diésel: ${r.nivel}%${r.nivel<THRESHOLD?' ⚠':''}`, responsable:r.tecnico
-    }));
+    db.garitas[g].daily.forEach(r => {
+      let detalle = `Diésel: ${r.nivel}%${r.nivel<THRESHOLD?' ⚠':''}`;
+      if(r.voltaje_bateria !== null && r.voltaje_bateria !== undefined) detalle += ` · Batería: ${r.voltaje_bateria}V`;
+      if(r.estado_control) detalle += ` · Control: ${r.estado_control==='automatico'?'Automático':'Manual'}`;
+      rows.push({ garita:g, tipo:'daily', tipoLabel:'Inspección diaria', fecha:r.fecha, detalle, responsable:r.tecnico });
+    });
     db.garitas[g].weekly.forEach(r => rows.push({
       garita:g, tipo:'weekly', tipoLabel:'Inspección semanal', fecha:r.fecha,
       detalle: `Eléctrica: ${r.test1==='bueno'?'Bueno':'No bueno'} · Arranque: ${r.test2==='bueno'?'Bueno':'No bueno'}`,
@@ -552,13 +642,34 @@ function renderHistorial(){
 document.getElementById('filterGarita').addEventListener('change', renderHistorial);
 document.getElementById('filterTipo').addEventListener('change', renderHistorial);
 
+/* ---------- Ajustes ---------- */
+const settingsModal = document.getElementById('settingsModal');
+document.getElementById('btnSettings').addEventListener('click', ()=>{
+  document.getElementById('defTecnico').value = db.settings.tecnico || '';
+  document.getElementById('defSupervisor').value = db.settings.supervisor || '';
+  settingsModal.classList.add('show');
+});
+document.getElementById('closeSettings').addEventListener('click', ()=> settingsModal.classList.remove('show'));
+settingsModal.addEventListener('click', e=>{ if(e.target===settingsModal) settingsModal.classList.remove('show'); });
+document.getElementById('saveSettings').addEventListener('click', async ()=>{
+  const tecnico = document.getElementById('defTecnico').value.trim();
+  const supervisor = document.getElementById('defSupervisor').value.trim();
+  try{
+    await apiPost('saveSettings', { tecnico, supervisor });
+    db.settings = { tecnico, supervisor };
+    settingsModal.classList.remove('show');
+  }catch(e){
+    alert('No se pudieron guardar los ajustes: ' + e.message);
+  }
+});
+
 /* ---------- Init + polling de sincronización ---------- */
 async function init(){
   await loadAll();
   refreshGlobal();
   renderSummary();
   const activeTab = document.querySelector('.tab.active');
-  if(activeTab && activeTab.dataset.tab !== 'resumen') renderGarita(activeTab.dataset.tab);
+  if(activeTab && activeTab.dataset.tab !== 'resumen' && activeTab.dataset.tab !== 'historial') renderGarita(activeTab.dataset.tab);
 }
 init();
 
